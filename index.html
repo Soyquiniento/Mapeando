@@ -561,6 +561,41 @@ map.on('idle', requestCacheSize);
 map.on('load', () => {
   startGPS();
 });
+  <div id="menu-descarga" style="position: absolute; top: 10px; left: 10px; z-index: 1000; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">
+    <h4 style="margin: 0 0 10px 0;">Mapas Offline</h4>
+    <button id="btn-descarga-ba" style="padding: 8px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px;">
+        Descargar Buenos Aires (Gratis)
+    </button>
+    <div id="progreso" style="margin-top: 5px; font-size: 12px; display: none;">Descargando... <span id="porcentaje">0</span>%</div>
+</div>
 </script>
+  // Coordenadas aproximadas de Buenos Aires (AMBA y alrededores)
+const LIMITES_BA = {
+    minLat: -35.0, maxLat: -34.3,
+    minLon: -59.0, maxLon: -57.8,
+    minZoom: 12, maxZoom: 15 // Nivel de detalle de calles
+};
+
+document.getElementById('btn-descarga-ba').addEventListener('click', async () => {
+    const progresoDiv = document.getElementById('progreso');
+    const porcentajeTxt = document.getElementById('porcentaje');
+    progresoDiv.style.display = 'block';
+
+    // Aquí usamos el Service Worker para pedirle que guarde la zona
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        // Enviamos un mensaje al sw.js para que empiece a descargar
+        navigator.serviceWorker.controller.postMessage({
+            type: 'DESCARGAR_REGION',
+            region: LIMITES_BA
+        });
+    }
+});
+
+// Escuchar el progreso desde el sw.js
+navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data.type === 'PROGRESO') {
+        document.getElementById('porcentaje').innerText = event.data.valor;
+    }
+});
 </body>
 </html>
