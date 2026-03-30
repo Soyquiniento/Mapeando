@@ -1,11 +1,11 @@
-const CACHE_NAME = 'mapa-ruta-v1';
+const CACHE_NAME = 'mapa-ruta-v2';
 const TILE_CACHE = 'tiles-v1';
 const STATIC_CACHE = 'static-v1';
 
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
+  './',
+  './index.html',
+  './manifest.json',
   'https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js',
   'https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css',
 ];
