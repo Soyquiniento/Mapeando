@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f1117" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Mapa Ruta</title>
+  <link rel="manifest" href="manifest.json" />
+  <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;400;600;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #181c24;
+      --surface2: #1e2330;
+      --border: #2a3045;
+      --accent: #e8ff47;
+      --accent2: #47c8ff;
+      --danger: #ff5c5c;
+      --text: #d4dbe8;
+      --text-dim: #6b7a99;
+      --mono: 'Space Mono', monospace;
+      --sans: 'Barlow Condensed', sans-serif;
+    }
+
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); }
+
+    #map { position: absolute; inset: 0; }
+
+    /* ── HUD superior ── */
+    #hud-top {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 10px;
+      background: linear-gradient(to bottom, rgba(15,17,23,.95) 60%, transparent);
+      pointer-events: none;
+      z-index: 10;
+    }
+    #logo {
+      font-family: var(--mono);
+      font-size: 13px;
+      letter-spacing: .15em;
+      color: var(--accent);
+      text-transform: uppercase;
+      pointer-events: auto;
+    }
+    #logo span { color: var(--text-dim); font-size: 10px; display: block; letter-spacing: .08em; margin-top: 1px; }
+
+    #status-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      pointer-events: auto;
+    }
+    .badge {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .1em;
+      padding: 4px 8px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+    .badge.online { border-color: var(--accent); color: var(--accent); }
+    .badge.offline { border-color: var(--danger); color: var(--danger); }
+    .badge.gps-ok { border-color: var(--accent2); color: var(--accent2); }
+
+    /* ── Panel coords ── */
+    #coords-panel {
+      position: absolute;
+      bottom: 130px; left: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      z-index: 10;
+      line-height: 1.8;
+      min-width: 190px;
+      transition: opacity .3s;
+    }
+    #coords-panel .label { color: var(--accent); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
+    #coords-panel .value { color: var(--text); font-size: 11px; }
+    #coords-panel .acc { color: var(--text-dim); font-size: 9px; }
+
+    /* ── Controles ── */
+    #controls {
+      position: absolute;
+      bottom: 32px; right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+    .ctrl-btn {
+      width: 46px; height: 46px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 20px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s, border-color .15s, transform .1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ctrl-btn:active { transform: scale(.93); background: var(--surface2); }
+    .ctrl-btn.active { border-color: var(--accent2); color: var(--accent2); }
+    .ctrl-btn.gps-active { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Toast de actualización ── */
+    #update-toast {
+      position: absolute;
+      bottom: 32px; left: 16px; right: 72px;
+      background: var(--surface2);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 14px 16px;
+      z-index: 20;
+      display: none;
+      animation: slideUp .3s ease;
+    }
+    #update-toast.visible { display: block; }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    #update-toast .toast-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--accent);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    #update-toast .toast-body {
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 12px;
+      line-height: 1.4;
+    }
+    .toast-actions { display: flex; gap: 8px; }
+    .toast-btn {
+      flex: 1;
+      padding: 8px;
+      border-radius: 4px;
+      border: none;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .08em;
+      cursor: pointer;
+      text-transform: uppercase;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .toast-btn.confirm { background: var(--accent); color: #0f1117; font-weight: 700; }
+    .toast-btn.dismiss { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+
+    /* ── Cache info ── */
+    #cache-info {
+      position: absolute;
+      top: 70px; right: 16px;
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--text-dim);
+      z-index: 10;
+      text-align: right;
+      line-height: 1.6;
+    }
+
+    /* ── Marcador GPS ── */
+    .gps-dot {
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--accent2);
+      border: 2px solid white;
+      box-shadow: 0 0 0 6px rgba(71,200,255,.2);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 0 6px rgba(71,200,255,.2); }
+      50%      { box-shadow: 0 0 0 12px rgba(71,200,255,.05); }
+    }
+
+    /* ── Overlay sin GPS ── */
+    #nogps-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15,17,23,.85);
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      display: none;
+    }
+    #nogps-overlay.visible { display: flex; }
+    #nogps-overlay .icon { font-size: 48px; }
+    #nogps-overlay p {
+      font-size: 15px;
+      color: var(--text-dim);
+      text-align: center;
+      max-width: 260px;
+      line-height: 1.5;
+    }
+    #nogps-overlay button {
+      padding: 12px 28px;
+      background: var(--accent);
+      color: #0f1117;
+      border: none;
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    /* Ocultar controles nativos de maplibre que no necesitamos */
+    .maplibregl-ctrl-logo { display: none !important; }
+    .maplibregl-ctrl-attrib { font-size: 8px !important; opacity: .4 !important; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- HUD superior -->
+<div id="hud-top">
+  <div id="logo">
+    MAPA RUTA
+    <span>Argentina · Offline</span>
+  </div>
+  <div id="status-bar">
+    <div class="badge" id="badge-net">SIN RED</div>
+    <div class="badge" id="badge-gps">GPS</div>
+  </div>
+</div>
+
+<!-- Info de caché -->
+<div id="cache-info" id="cache-info">
+  <div id="tile-count">— tiles en caché</div>
+</div>
+
+<!-- Panel de coordenadas -->
+<div id="coords-panel">
+  <div class="label">Posición</div>
+  <div class="value" id="coord-lat">—</div>
+  <div class="value" id="coord-lon">—</div>
+  <div class="acc" id="coord-acc">Esperando GPS...</div>
+</div>
+
+<!-- Controles -->
+<div id="controls">
+  <button class="ctrl-btn" id="btn-gps" title="Centrar en mi posición">◎</button>
+  <button class="ctrl-btn" id="btn-zoom-in" title="Acercar">+</button>
+  <button class="ctrl-btn" id="btn-zoom-out" title="Alejar">−</button>
+  <button class="ctrl-btn" id="btn-layer" title="Cambiar mapa">⊞</button>
+</div>
+
+<!-- Toast de actualización -->
+<div id="update-toast">
+  <div class="toast-title">🛰 Actualización disponible</div>
+  <div class="toast-body" id="toast-body">Hay una actualización del mapa disponible. ¿Descargás ahora por WiFi?</div>
+  <div class="toast-actions">
+    <button class="toast-btn confirm" id="toast-confirm">Actualizar</button>
+    <button class="toast-btn dismiss" id="toast-dismiss">Ahora no</button>
+  </div>
+</div>
+
+<!-- Overlay si no hay permiso GPS -->
+<div id="nogps-overlay">
+  <div class="icon">📍</div>
+  <p>Necesitamos acceso a tu ubicación para mostrarte en el mapa.</p>
+  <button id="btn-request-gps">Activar GPS</button>
+</div>
+
+<script>
+// ── Registro del Service Worker ──
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+    .then(reg => {
+      console.log('[SW] registrado', reg.scope);
+      // Escuchar mensajes del SW
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data?.type === 'CACHE_SIZE') {
+          document.getElementById('tile-count').textContent =
+            `${e.data.count.toLocaleString()} tiles en caché`;
+        }
+        if (e.data === 'CACHE_CLEARED') {
+          document.getElementById('tile-count').textContent = '0 tiles en caché';
+        }
+      });
+    })
+    .catch(err => console.warn('[SW] error:', err));
+}
+
+// ── Config de capas de mapas ──
+const LAYERS = [
+  {
+    name: 'OSM Topo',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '© OpenStreetMap contributors'
+  },
+  {
+    name: 'Ciclovías',
+    url: 'https://tile.waymarkedtrails.org/cycling/{z}/{x}/{y}.png',
+    attribution: '© Waymarked Trails / OpenStreetMap'
+  },
+  {
+    name: 'Satélite (ESRI)',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© Esri'
+  }
+];
+
+let currentLayer = 0;
+let gpsMarker = null;
+let watchId = null;
+let trackingGPS = false;
+let lastPosition = null;
+
+// ── Inicializar mapa ──
+// Centro inicial: Argentina
+const map = new maplibregl.Map({
+  container: 'map',
+  style: buildStyle(LAYERS[0]),
+  center: [-64.0, -34.0],
+  zoom: 5,
+  attributionControl: true,
+  logoPosition: 'bottom-left'
+});
+
+function buildStyle(layer) {
+  return {
+    version: 8,
+    sources: {
+      'raster-tiles': {
+        type: 'raster',
+        tiles: [layer.url],
+        tileSize: 256,
+        attribution: layer.attribution
+      }
+    },
+    layers: [{
+      id: 'background',
+      type: 'background',
+      paint: { 'background-color': '#0f1117' }
+    }, {
+      id: 'raster-layer',
+      type: 'raster',
+      source: 'raster-tiles',
+      minzoom: 0,
+      maxzoom: 19
+    }]
+  };
+}
+
+// ── GPS ──
+function startGPS() {
+  if (!navigator.geolocation) {
+    showOverlay('Tu dispositivo no soporta geolocalización.');
+    return;
+  }
+
+  watchId = navigator.geolocation.watchPosition(
+    onPosition,
+    onGPSError,
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 }
+  );
+}
+
+function onPosition(pos) {
+  const { latitude, longitude, accuracy } = pos.coords;
+  lastPosition = { lat: latitude, lon: longitude, acc: accuracy };
+
+  // Actualizar HUD
+  document.getElementById('coord-lat').textContent = latitude.toFixed(6) + '° S';
+  document.getElementById('coord-lon').textContent = longitude.toFixed(6) + '° O';
+  document.getElementById('coord-acc').textContent = `± ${Math.round(accuracy)} m`;
+  document.getElementById('badge-gps').textContent = 'GPS ✓';
+  document.getElementById('badge-gps').className = 'badge gps-ok';
+  document.getElementById('btn-gps').classList.add('gps-active');
+  document.getElementById('nogps-overlay').classList.remove('visible');
+
+  // Actualizar o crear marcador
+  if (!gpsMarker) {
+    const el = document.createElement('div');
+    el.className = 'gps-dot';
+    gpsMarker = new maplibregl.Marker({ element: el })
+      .setLngLat([longitude, latitude])
+      .addTo(map);
+    // Primera vez: centrar
+    map.flyTo({ center: [longitude, latitude], zoom: 13, duration: 1200 });
+    trackingGPS = true;
+  } else {
+    gpsMarker.setLngLat([longitude, latitude]);
+    if (trackingGPS) {
+      map.easeTo({ center: [longitude, latitude], duration: 500 });
+    }
+  }
+}
+
+function onGPSError(err) {
+  console.warn('[GPS] error:', err.message);
+  document.getElementById('badge-gps').textContent = 'SIN GPS';
+  document.getElementById('badge-gps').className = 'badge offline';
+  document.getElementById('coord-acc').textContent = 'Sin señal GPS';
+  if (err.code === err.PERMISSION_DENIED) {
+    document.getElementById('nogps-overlay').classList.add('visible');
+  }
+}
+
+function showOverlay(msg) {
+  document.getElementById('nogps-overlay').querySelector('p').textContent = msg;
+  document.getElementById('nogps-overlay').classList.add('visible');
+}
+
+// ── Botón GPS ──
+document.getElementById('btn-gps').addEventListener('click', () => {
+  if (lastPosition) {
+    map.flyTo({ center: [lastPosition.lon, lastPosition.lat], zoom: 14, duration: 800 });
+    trackingGPS = true;
+    document.getElementById('btn-gps').classList.add('gps-active');
+  } else {
+    startGPS();
+  }
+});
+
+// Desactivar tracking al mover el mapa manualmente
+map.on('dragstart', () => {
+  trackingGPS = false;
+  document.getElementById('btn-gps').classList.remove('gps-active');
+});
+
+// ── Zoom ──
+document.getElementById('btn-zoom-in').addEventListener('click', () => map.zoomIn());
+document.getElementById('btn-zoom-out').addEventListener('click', () => map.zoomOut());
+
+// ── Cambio de capa ──
+document.getElementById('btn-layer').addEventListener('click', () => {
+  currentLayer = (currentLayer + 1) % LAYERS.length;
+  map.setStyle(buildStyle(LAYERS[currentLayer]));
+  // Re-agregar marcador GPS si existe
+  map.once('style.load', () => {
+    if (lastPosition && gpsMarker) {
+      gpsMarker.remove();
+      const el = document.createElement('div');
+      el.className = 'gps-dot';
+      gpsMarker = new maplibregl.Marker({ element: el })
+        .setLngLat([lastPosition.lon, lastPosition.lat])
+        .addTo(map);
+    }
+  });
+  // Mostrar nombre de capa brevemente
+  const badge = document.getElementById('badge-net');
+  const prev = badge.textContent;
+  badge.textContent = LAYERS[currentLayer].name.toUpperCase();
+  setTimeout(() => badge.textContent = prev, 2000);
+});
+
+// ── Overlay GPS ──
+document.getElementById('btn-request-gps').addEventListener('click', () => {
+  document.getElementById('nogps-overlay').classList.remove('visible');
+  startGPS();
+});
+
+// ── Detección de red ──
+const badgeNet = document.getElementById('badge-net');
+let wasOffline = !navigator.onLine;
+let updateToastShown = false;
+
+function updateNetStatus() {
+  const online = navigator.onLine;
+  if (online) {
+    // Detectar si es WiFi (lo mejor que podemos hacer en PWA)
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const isWifi = conn ? (conn.type === 'wifi' || conn.effectiveType === '4g') : true;
+
+    badgeNet.textContent = isWifi ? 'WiFi' : 'DATOS';
+    badgeNet.className = 'badge online';
+
+    // Mostrar toast de actualización si volvió de offline o conectó WiFi
+    if ((wasOffline || isWifi) && !updateToastShown) {
+      setTimeout(() => showUpdateToast(isWifi), 1500);
+      updateToastShown = true;
+    }
+    wasOffline = false;
+  } else {
+    badgeNet.textContent = 'SIN RED';
+    badgeNet.className = 'badge offline';
+    wasOffline = true;
+    updateToastShown = false;
+  }
+}
+
+function showUpdateToast(isWifi) {
+  const body = isWifi
+    ? 'Conectado a WiFi. ¿Querés actualizar los tiles del mapa ahora?'
+    : 'Hay una actualización disponible. Recomendamos actualizarla con WiFi.';
+  document.getElementById('toast-body').textContent = body;
+  document.getElementById('update-toast').classList.add('visible');
+}
+
+document.getElementById('toast-confirm').addEventListener('click', () => {
+  document.getElementById('update-toast').classList.remove('visible');
+  // Limpiar caché vieja y recargar tiles
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage('CLEAR_TILE_CACHE');
+  }
+  // Recargar el mapa para re-cachear tiles visibles
+  const center = map.getCenter();
+  const zoom = map.getZoom();
+  map.setStyle(buildStyle(LAYERS[currentLayer]));
+  map.once('style.load', () => {
+    map.flyTo({ center, zoom });
+    if (lastPosition && gpsMarker) {
+      gpsMarker.remove();
+      const el = document.createElement('div');
+      el.className = 'gps-dot';
+      gpsMarker = new maplibregl.Marker({ element: el })
+        .setLngLat([lastPosition.lon, lastPosition.lat])
+        .addTo(map);
+    }
+  });
+  badgeNet.textContent = 'ACTUALIZANDO...';
+  setTimeout(() => updateNetStatus(), 3000);
+});
+
+document.getElementById('toast-dismiss').addEventListener('click', () => {
+  document.getElementById('update-toast').classList.remove('visible');
+});
+
+window.addEventListener('online', updateNetStatus);
+window.addEventListener('offline', updateNetStatus);
+updateNetStatus();
+
+// ── Pedir conteo de caché periódicamente ──
+function requestCacheSize() {
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage('GET_CACHE_SIZE');
+  }
+}
+setInterval(requestCacheSize, 10000);
+map.on('idle', requestCacheSize);
+
+// ── Arrancar GPS automáticamente ──
+map.on('load', () => {
+  startGPS();
+});
+</script>
+</body>
+</html>
