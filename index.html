@@ -336,6 +336,41 @@ let lastPosition = null;
 // ── Inicializar mapa ──
 // Centro inicial: Argentina
 const map = new maplibregl.Map({
+    container: 'map', 
+ style: 'https://maplibre.org'
+  center: [-58.4, -34.6], 
+  zoom: 10
+}); 
+  // 1. Configuración de descarga para Buenos Aires
+  const LIMITES_BA = { minLat: -35.0, maxLat: -34.3, minLon: -59.0, maxLon: -57.8, minZoom: 12, maxZoom: 15 };
+
+  const btnDescarga = document.getElementById('btn-descarga-ba');
+  if (btnDescarga) {
+    btnDescarga.addEventListener('click', async () => {
+      document.getElementById('progreso').style.display = 'block';
+      if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'DESCARGAR_REGION', region: LIMITES_BA });
+      } else {
+        alert("El sistema de descarga no está listo. Recarga la página.");
+      }
+    });
+  }
+
+  // 2. Escuchar el progreso de descarga
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data.type === 'PROGRESO') {
+        document.getElementById('porcentaje').innerText = e.data.valor;
+      }
+    });
+  }
+
+  // 3. Marcador de destino (La "X" roja)
+  let marcadorDestino;
+  map.on('click', (e) => {
+    if (marcadorDestino) marcadorDestino.remove();
+    marcadorDestino = new maplibregl.Marker({ color: 'red' }).setLngLat(e.lngLat).addTo(map);
+  });
   container: 'map',
   style: buildStyle(LAYERS[0]),
   center: [-64.0, -34.0],
@@ -590,10 +625,11 @@ navigator.serviceWorker.addEventListener('message', (event) => {
 // 4. Marcador de destino (Tu "X" de emergencia)
 let marcadorDestino;
 map.on('click', (e) => {
-    if (marcadorDestino) marcadorDestino.remove(); // Borra el anterior
+    if (marcadorDestino) marcadorDestino.remove();
     marcadorDestino = new maplibregl.Marker({ color: 'red' })
         .setLngLat(e.lngLat)
         .addTo(map);
+});
 });
 </script>
   <div id="menu-descarga" style="position: absolute; top: 70px; left: 10px; z-index: 1000; background: rgba(255, 255, 255, 0.9); padding: 10px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-family: sans-serif;">
