@@ -84,3 +84,55 @@ self.addEventListener('message', (event) => {
     });
   }
 });
+// Escuchar mensajes del index.html
+self.addEventListener('message', (event) => {
+    if (event.data.type === 'DESCARGAR_REGION') {
+        descargarZona(event.data.region);
+    }
+});
+
+async function descargarZona(region) {
+    const cache = await caches.open('mapa-ruta-v2'); // Asegúrate que coincida con tu nombre de caché
+    let total = 0;
+    let actual = 0;
+
+    // 1. Contar cuántos cuadritos hay que bajar (para el %)
+    for (let z = region.minZoom; z <= region.maxZoom; z++) {
+        const xMin = lon2tile(region.minLon, z);
+        const xMax = lon2tile(region.maxLon, z);
+        const yMin = lat2tile(region.maxLat, z);
+        const yMax = lat2tile(region.minLat, z);
+        total += (xMax - xMin + 1) * (yMax - yMin + 1);
+    }
+
+    // 2. Descargar cada cuadrito (tile)
+    for (let z = region.minZoom; z <= region.maxZoom; z++) {
+        const xMin = lon2tile(region.minLon, z);
+        const xMax = lon2tile(region.maxLon, z);
+        const yMin = lat2tile(region.maxLat, z);
+        const yMax = lat2tile(region.minLat, z);
+
+        for (let x = xMin; x <= xMax; x++) {
+            for (let y = yMin; y <= yMax; y++) {
+                // Aquí va la URL de tus mapas (ajusta si usas otro servidor)
+                const url = `https://openstreetmap.org{z}/${x}/${y}.png`;
+                
+                try {
+                    const response = await fetch(url);
+                    if (response.ok) await cache.put(url, response);
+                } catch (e) { console.error("Error bajando tile", e); }
+
+                actual++;
+                // Enviar progreso al index.html
+                const porcentaje = Math.round((actual / total) * 100);
+                self.clients.matchAll().then(clients => {
+                    clients.forEach(client => client.postMessage({ type: 'PROGRESO', valor: porcentaje }));
+                });
+            }
+        }
+    }
+}
+
+// Funciones matemáticas para convertir coordenadas a Tiles
+function lon2tile(lon, zoom) { return Math.floor((lon + 180) / 360 * Math.pow(2, zoom)); }
+function lat2tile(lat, zoom) { return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom)); }
