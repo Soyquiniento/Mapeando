@@ -3,6 +3,7 @@
   "short_name": "MapaRuta",
   "description": "Mapa offline para cicloturistas. Sin datos, sin login, sin tracking.",
   "./index.html": "/",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0f1117",
   "theme_color": "#0f1117",
